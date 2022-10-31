@@ -23,3 +23,7 @@ func goInit(mod string) error {
 func gitInit() error {
 	return execComand("git", "init")
 }
+
+func touch(filename string) error {
+	return execComand("touch", filename)
+}

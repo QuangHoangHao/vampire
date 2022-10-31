@@ -108,8 +108,8 @@ func initProject(answers InitAnswer) error {
 		return err
 	}
 	defer readmeFile.Close()
-	mainTemplate := template.Must(template.New("README").Parse(tlp.ReadmeTemplate))
-	if err := mainTemplate.Execute(readmeFile, nil); err != nil {
+	readmeTemplate := template.Must(template.New("README").Parse(tlp.ReadmeTemplate))
+	if err := readmeTemplate.Execute(readmeFile, nil); err != nil {
 		return err
 	}
 
@@ -139,7 +139,12 @@ func initProject(answers InitAnswer) error {
 			return err
 		}
 	}
+
+	// env
+	touch("development.env")
+	touch("production.env")
 	// go get mod
+
 	modList := []string{"github.com/rs/zerolog/log", "github.com/joho/godotenv"}
 	if answers.Database == "MongoDB" {
 		modList = append(modList, "go.mongodb.org/mongo-driver/mongo")
@@ -153,7 +158,26 @@ func initProject(answers InitAnswer) error {
 			return err
 		}
 	}
-	// create cmd/main.go
 
+	// create cmd/api/main.go
+	if answers.Type == "API" {
+		if _, err = os.Stat(fmt.Sprintf("%s/cmd/api", absolutePath)); os.IsNotExist(err) {
+			if err := os.MkdirAll(fmt.Sprintf("%s/cmd/api", absolutePath), 0751); err != nil {
+				return err
+			}
+		}
+		apiFile, err := os.Create(fmt.Sprintf("%s/cmd/api/main.go", absolutePath))
+		if err != nil {
+			return err
+		}
+		defer apiFile.Close()
+		mainTemplate := template.Must(template.New("main").Parse(tlp.MainAPI))
+		if err := mainTemplate.Execute(apiFile, struct {
+			MongoDB bool
+			Gin     bool
+		}{answers.Database == "MongoDB", answers.Framework == "Gin"}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
