@@ -48,6 +48,11 @@ var (
 			Default: "Gin",
 		},
 	}
+	WorkerName = &survey.Question{
+		Name:     "workername",
+		Prompt:   &survey.Input{Message: "Worker Name:"},
+		Validate: survey.Required,
+	}
 )
 
 type InitAnswer struct {
@@ -57,6 +62,7 @@ type InitAnswer struct {
 	Prometheus bool
 	Database   string
 	Framework  string
+	Workername string
 }
 
 func init() {
@@ -85,8 +91,9 @@ func startSurvey(answers *InitAnswer) error {
 			return err
 		}
 	case "Worker":
-
-		break
+		if err := survey.Ask([]*survey.Question{WorkerName}, answers); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -179,5 +186,26 @@ func initProject(answers InitAnswer) error {
 			return err
 		}
 	}
+
+	// create worker
+	if answers.Type == "Worker" {
+		if _, err = os.Stat(fmt.Sprintf("%s/cmd/%s", absolutePath, answers.Workername)); os.IsNotExist(err) {
+			if err := os.MkdirAll(fmt.Sprintf("%s/cmd/%s", absolutePath, answers.Workername), 0751); err != nil {
+				return err
+			}
+		}
+		workerFile, err := os.Create(fmt.Sprintf("%s/cmd/%s/main.go", absolutePath, answers.Workername))
+		if err != nil {
+			return err
+		}
+		defer workerFile.Close()
+		workerTemplate := template.Must(template.New("worker").Parse(tlp.MainWorker))
+		if err := workerTemplate.Execute(workerFile, struct {
+			MongoDB bool
+		}{answers.Database == "MongoDB"}); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
