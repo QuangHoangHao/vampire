@@ -35,12 +35,12 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-{{ if .MongoDB}} 
+	{{ if .MongoDB}} 
 	"context"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
-{{end}}
+	{{end}}
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
@@ -57,7 +57,7 @@ func main() {
 	if err := godotenv.Load(fileEnv); err != nil {
 		log.Error().Err(err).Msg("parse env failed")
 	}
-{{ if .MongoDB}} 
+	{{ if .MongoDB}} 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	
@@ -77,81 +77,20 @@ func main() {
 	log.Info().Msg("Connected to MongoDB")
 	
 	client.Database(os.Getenv("MONGO_DB_NAME"))
-{{end}}
-{{if .Gin}}
+	{{end}}
+
+	{{if .Gin}}
 	router := gin.Default()
 	router.GET("/health", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
 	router.Run(":3000")
 	log.Info().Msg("server is running at : 3000")
-{{end}}
+	{{end}}
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	log.Info().Msg("Shutting down server...")
-}`
-
-	MainWorker = `package main
-
-import (
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
-{{ if .MongoDB}} 
-	"context"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/mongo/readpref"
-{{end}}
-	"github.com/joho/godotenv"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
-)
-
-func main() {
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339})
-
-	fileEnv := "development.env"
-
-	if os.Getenv("APP_ENV") == "production" {
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-		fileEnv = "production.env"
-	}
-
-	if err := godotenv.Load(fileEnv); err != nil {
-		log.Error().Err(err).Msg("parse env failed")
-		return
-	}
-{{ if .MongoDB}} 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(os.Getenv("MONGO_URL")))
-	if err != nil {
-		panic(err)
-	}
-	defer func() {
-		if err := client.Disconnect(context.TODO()); err != nil {
-			panic(err)
-		}
-	}()
-	
-	if err := client.Ping(context.TODO(), readpref.Primary()); err != nil {
-		log.Error().Err(err).Msg("")
-	}
-	log.Info().Msg("Connected to MongoDB")
-	
-	client.Database(os.Getenv("MONGO_DB_NAME"))
-{{end}}
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
-
-	select {
-	case s := <-interrupt:
-		log.Info().Msg("app - Run - signal: " + s.String())
-	}
 }`
 )
