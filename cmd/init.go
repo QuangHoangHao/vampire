@@ -184,15 +184,6 @@ func startSurveyInit(answers *InitAnswer) error {
 }
 
 func initProject(answers InitAnswer) error {
-	if err := os.Mkdir(answers.Module, 0755); err != nil {
-		return err
-	}
-
-	// cd to answers.Module folder to create files
-	if err := os.Chdir(answers.Module); err != nil {
-		return err
-	}
-
 	absolutePath, err := os.Getwd()
 
 	if err != nil {

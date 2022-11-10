@@ -23,6 +23,15 @@ worker      Create Worker
    ```
 
 Example : Init Project 
+
+```shell
+mkdir greet
+```
+
+```shell
+cd greet
+```
+
 ```shell
 vampire init
 ```
