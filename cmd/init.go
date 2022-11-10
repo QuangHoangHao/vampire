@@ -6,9 +6,9 @@ import (
 	"text/template"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/QuangHoangHao/vampire/tlp"
 	"github.com/iancoleman/strcase"
 	"github.com/spf13/cobra"
-	"github.com/tikivn/vampire/tlp"
 )
 
 var (
@@ -22,16 +22,29 @@ var (
 		Prompt: &survey.Confirm{Message: "Generate Dockerfile?"},
 	}
 	TypeQuestion = &survey.Question{
-		Name: "type",
-		Prompt: &survey.Select{
-			Message: "App Type:",
-			Options: []string{"API", "Worker"},
-			Default: "API",
-		},
+		Name:     "type",
+		Prompt:   &survey.Select{Message: "Choose type:", Options: []string{"API", "Worker"}},
+		Validate: survey.Required,
 	}
-	PrometheusQuestion = &survey.Question{
-		Name:   "prometheus",
-		Prompt: &survey.Confirm{Message: "Set up Prometheus client?"},
+	WorkerName = &survey.Question{
+		Name:     "workerName",
+		Prompt:   &survey.Input{Message: "Worker Name:"},
+		Validate: survey.Required,
+	}
+	ControllerName = &survey.Question{
+		Name:     "controllerName",
+		Prompt:   &survey.Input{Message: "Controller Name:"},
+		Validate: survey.Required,
+	}
+	ServiceName = &survey.Question{
+		Name:     "serviceName",
+		Prompt:   &survey.Input{Message: "Service Name:"},
+		Validate: survey.Required,
+	}
+	RepoName = &survey.Question{
+		Name:     "RepositoryName",
+		Prompt:   &survey.Input{Message: "Repository Name:"},
+		Validate: survey.Required,
 	}
 	DatabaseQuestion = &survey.Question{
 		Name: "database",
@@ -41,81 +54,50 @@ var (
 			Default: "Skip",
 		},
 	}
-	WebFramework = &survey.Question{
-		Name: "framework",
-		Prompt: &survey.Select{
-			Message: "Web Framework:",
-			Options: []string{"Gin"},
-			Default: "Gin",
-		},
-	}
-	Mq = &survey.Question{
-		Name: "mq",
-		Prompt: &survey.Select{
-			Message: "Message Queue:",
-			Options: []string{"Skip", "Kafka"},
-			Default: "Skip",
-		},
-	}
-	KafkaURL = &survey.Question{
-		Name:     "kafkaURL",
-		Prompt:   &survey.Input{Message: "Kafka URL:"},
-		Validate: survey.Required,
-	}
-	DBUrl = &survey.Question{
-		Name:     "dbURL",
-		Prompt:   &survey.Input{Message: "Database URL:"},
-		Validate: survey.Required,
-	}
-	DBName = &survey.Question{
-		Name:     "dbName",
-		Prompt:   &survey.Input{Message: "Database Name:"},
-		Validate: survey.Required,
-	}
-	NameWorker = &survey.Question{
-		Name:     "nameWorker",
-		Prompt:   &survey.Input{Message: "Worker Name:"},
-		Validate: survey.Required,
-	}
-	TopicNameWorker = &survey.Question{
-		Name:     "topicNameWorker",
-		Prompt:   &survey.Input{Message: "Topic Name:"},
-		Validate: survey.Required,
-	}
-	GroupID = &survey.Question{
-		Name:     "groupID",
-		Prompt:   &survey.Input{Message: "Group ID:"},
+	DINameQuestion = &survey.Question{
+		Name:     "DIName",
+		Prompt:   &survey.Input{Message: "DIName Name:"},
 		Validate: survey.Required,
 	}
 )
 
 type InitAnswer struct {
-	Module          string
-	Dockerfile      bool
-	Type            string
-	Prometheus      bool
-	Database        string
-	Framework       string
-	Mq              string
-	KafkaURL        string
-	DBURL           string
-	DBName          string
-	NameWorker      string
-	TopicNameWorker string
-	GroupID         string
+	Module     string
+	Type       string
+	Dockerfile bool
+	WorkerName string
+}
+
+type DIAnswer struct {
+	Type     string
+	DIName   string
+	Database string
+}
+
+type WorkerAnswer struct {
+	WorkerName string
+}
+
+type ControllerAnswer struct {
+	ControllerName string
 }
 
 type ServiceAnswer struct {
-	Name       string
-	Database   string
-	NameWorker string
-	Module     string
+	ServiceName string
+}
+
+type RepositoryAnswer struct {
+	RepositoryName string
+	Database       string
 }
 
 func init() {
 	rootCmd.AddCommand(initCmd)
+	rootCmd.AddCommand(workerCmd)
+	rootCmd.AddCommand(controllerCmd)
 	rootCmd.AddCommand(serviceCmd)
 	rootCmd.AddCommand(repoCmd)
+	rootCmd.AddCommand(DICmd)
 }
 
 var initCmd = &cobra.Command{
@@ -124,8 +106,30 @@ var initCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		var answers InitAnswer
 
-		cobra.CheckErr(startSurvey(&answers))
+		cobra.CheckErr(startSurveyInit(&answers))
 		cobra.CheckErr(initProject(answers))
+	},
+}
+
+var workerCmd = &cobra.Command{
+	Use:   "worker",
+	Short: "Create Worker",
+	Run: func(cmd *cobra.Command, args []string) {
+		var answers WorkerAnswer
+
+		cobra.CheckErr(startSurveyWorker(&answers))
+		cobra.CheckErr(createWorker(answers.WorkerName))
+	},
+}
+
+var controllerCmd = &cobra.Command{
+	Use:   "controller",
+	Short: "Create Controller",
+	Run: func(cmd *cobra.Command, args []string) {
+		var answers ControllerAnswer
+
+		cobra.CheckErr(startSurveyController(&answers))
+		cobra.CheckErr(createController(answers.ControllerName))
 	},
 }
 
@@ -136,7 +140,7 @@ var serviceCmd = &cobra.Command{
 		var answers ServiceAnswer
 
 		cobra.CheckErr(startSurveyService(&answers))
-		cobra.CheckErr(createServiceProject(answers))
+		cobra.CheckErr(createService(answers.ServiceName))
 	},
 }
 
@@ -144,105 +148,38 @@ var repoCmd = &cobra.Command{
 	Use:   "repo",
 	Short: "Create Repo",
 	Run: func(cmd *cobra.Command, args []string) {
-		var answers ServiceAnswer
+		var answers RepositoryAnswer
 
 		cobra.CheckErr(startSurveyRepo(&answers))
-		cobra.CheckErr(createRepoProject(answers))
+		cobra.CheckErr(createRepo(answers))
 	},
 }
 
-func startSurvey(answers *InitAnswer) error {
+var DICmd = &cobra.Command{
+	Use:   "DI",
+	Short: "Create DI",
+	Run: func(cmd *cobra.Command, args []string) {
+		var answers DIAnswer
 
-	if err := survey.Ask([]*survey.Question{ModuleNameQuestion, DockerfileQuestion, DatabaseQuestion, TypeQuestion}, answers); err != nil {
+		cobra.CheckErr(startSurveyDI(&answers))
+		cobra.CheckErr(createDI(answers))
+	},
+}
+
+func startSurveyInit(answers *InitAnswer) error {
+	if err := survey.Ask([]*survey.Question{ModuleNameQuestion, DockerfileQuestion, TypeQuestion}, answers); err != nil {
 		return err
 	}
 	switch answers.Type {
 	case "API":
-		if err := survey.Ask([]*survey.Question{WebFramework, PrometheusQuestion}, answers); err != nil {
+		if err := survey.Ask([]*survey.Question{}, answers); err != nil {
 			return err
 		}
 	case "Worker":
-		if err := survey.Ask([]*survey.Question{Mq, DBUrl, DBName, KafkaURL, NameWorker, TopicNameWorker, GroupID}, answers); err != nil {
+		if err := survey.Ask([]*survey.Question{WorkerName}, answers); err != nil {
 			return err
 		}
 	}
-	return nil
-}
-
-func startSurveyService(answers *ServiceAnswer) error {
-	if err := survey.Ask([]*survey.Question{DatabaseQuestion, NameWorker}, answers); err != nil {
-		return err
-	}
-	return nil
-}
-
-func startSurveyRepo(answers *ServiceAnswer) error {
-	if err := survey.Ask([]*survey.Question{DatabaseQuestion, NameWorker}, answers); err != nil {
-		return err
-	}
-	return nil
-}
-
-func createServiceProject(answers ServiceAnswer) error {
-	absolutePath, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
-	funcMap := template.FuncMap{
-		"ToCamel":      strcase.ToCamel,
-		"ToLowerCamel": strcase.ToLowerCamel,
-	}
-
-	workerServiceFile, err := os.Create(fmt.Sprintf("%s/internal/%s/%s.service.go", absolutePath, answers.NameWorker, strcase.ToKebab(answers.NameWorker)))
-	if err != nil {
-		return err
-	}
-
-	defer workerServiceFile.Close()
-
-	workerServiceTemplate := template.Must(template.New("workerService").Funcs(funcMap).Parse(tlp.WorkerService))
-
-	if err := workerServiceTemplate.Execute(workerServiceFile, struct {
-		MongoDB    bool
-		Module     string
-		NameWorker string
-	}{answers.Database == "MongoDB", absolutePath, answers.NameWorker}); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func createRepoProject(answers ServiceAnswer) error {
-	absolutePath, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
-	funcMap := template.FuncMap{
-		"ToCamel":      strcase.ToCamel,
-		"ToLowerCamel": strcase.ToLowerCamel,
-		"ToKebab":      strcase.ToKebab,
-	}
-
-	workerRepoFile, err := os.Create(fmt.Sprintf("%s/internal/%s/%s.repo.go", absolutePath, answers.NameWorker, strcase.ToKebab(answers.NameWorker)))
-	if err != nil {
-		return err
-	}
-
-	defer workerRepoFile.Close()
-
-	workerRepoTemplate := template.Must(template.New("workerRepo").Funcs(funcMap).Parse(tlp.WorkerRepo))
-
-	if err := workerRepoTemplate.Execute(workerRepoFile, struct {
-		MongoDB    bool
-		Module     string
-		NameWorker string
-	}{answers.Database == "MongoDB", answers.Module, answers.NameWorker}); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -300,30 +237,19 @@ func initProject(answers InitAnswer) error {
 	touch("development.env")
 	touch("production.env")
 
-	// write content to env file
 	envFile, err := os.OpenFile(fmt.Sprintf("%s/development.env", absolutePath), os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 	defer envFile.Close()
+
 	envTemplate := template.Must(template.New("env").Parse(tlp.Env))
-	if err := envTemplate.Execute(envFile, struct {
-		Kafka           bool
-		MongoDB         bool
-		DBUrl           string
-		DBName          string
-		KafkaURL        string
-		TopicNameWorker string
-	}{answers.Mq == "Kafka", answers.Database == "MongoDB", answers.DBURL, answers.DBName, answers.KafkaURL, answers.TopicNameWorker}); err != nil {
+	if err := envTemplate.Execute(envFile, nil); err != nil {
 		return err
 	}
 
 	// go get mod
-
 	modList := []string{"github.com/rs/zerolog/log", "github.com/joho/godotenv"}
-	if answers.Database == "MongoDB" {
-		modList = append(modList, "go.mongodb.org/mongo-driver/mongo")
-	}
 	if answers.Type == "API" {
 		modList = append(modList, "github.com/gin-gonic/gin")
 	}
@@ -349,69 +275,244 @@ func initProject(answers InitAnswer) error {
 			return err
 		}
 		defer apiFile.Close()
-		mainTemplate := template.Must(template.New("main").Parse(tlp.MainAPI))
-		if err := mainTemplate.Execute(apiFile, struct {
-			MongoDB bool
-			Gin     bool
-		}{answers.Database == "MongoDB", answers.Framework == "Gin"}); err != nil {
+		apiTemplate := template.Must(template.New("api").Parse(tlp.API))
+		if err := apiTemplate.Execute(apiFile, nil); err != nil {
 			return err
 		}
+
+		return nil
 	}
 
 	// create cmd/worker/main.go
 	if answers.Type == "Worker" {
-
-		funcMap := template.FuncMap{
-			"ToCamel":      strcase.ToCamel,
-			"ToLowerCamel": strcase.ToLowerCamel,
-		}
-
-		if _, err = os.Stat(fmt.Sprintf("%s/cmd/worker/%s", absolutePath, answers.NameWorker)); os.IsNotExist(err) {
-			if err := os.MkdirAll(fmt.Sprintf("%s/cmd/worker/%s", absolutePath, answers.NameWorker), 0751); err != nil {
-				return err
-			}
-		}
-		workerFile, err := os.Create(fmt.Sprintf("%s/cmd/worker/%s/main.go", absolutePath, answers.NameWorker))
-		if err != nil {
+		if err = createWorker(answers.WorkerName); err != nil {
 			return err
 		}
-		defer workerFile.Close()
-		mainTemplate := template.Must(template.New("main").Funcs(funcMap).Parse(tlp.MainWorker))
-		if err := mainTemplate.Execute(workerFile, struct {
-			Kafka           bool
-			MongoDB         bool
-			Module          string
-			KafkaURL        string
-			DBUrl           string
-			DBName          string
-			NameWorker      string
-			TopicNameWorker string
-			GroupID         string
-		}{answers.Mq == "Kafka", answers.Database == "MongoDB", answers.Module, answers.KafkaURL, answers.DBURL, answers.DBName, answers.NameWorker, answers.TopicNameWorker, answers.GroupID}); err != nil {
+	}
+
+	return nil
+}
+
+func startSurveyWorker(answers *WorkerAnswer) error {
+	if err := survey.Ask([]*survey.Question{WorkerName}, answers); err != nil {
+		return err
+	}
+	return nil
+}
+
+func createWorker(workerName string) error {
+	absolutePath, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	funcMap := template.FuncMap{
+		"ToCamel":      strcase.ToCamel,
+		"ToLowerCamel": strcase.ToLowerCamel,
+	}
+
+	if _, err = os.Stat(fmt.Sprintf("%s/cmd/worker/%s", absolutePath, workerName)); os.IsNotExist(err) {
+		if err := os.MkdirAll(fmt.Sprintf("%s/cmd/worker/%s", absolutePath, workerName), 0751); err != nil {
 			return err
 		}
+	}
+	workerFile, err := os.Create(fmt.Sprintf("%s/cmd/worker/%s/main.go", absolutePath, workerName))
+	if err != nil {
+		return err
+	}
+	defer workerFile.Close()
 
-		// create {answers.NameWorker}/internal/{answers.NameWorker}.handeler.go
-		if _, err = os.Stat(fmt.Sprintf("%s/internal/%s", absolutePath, answers.NameWorker)); os.IsNotExist(err) {
-			if err := os.MkdirAll(fmt.Sprintf("%s/internal/%s", absolutePath, answers.NameWorker), 0751); err != nil {
-				return err
-			}
-		}
-		workerHandlerFile, err := os.Create(fmt.Sprintf("%s/internal/%s/%s.handler.go", absolutePath, answers.NameWorker, strcase.ToKebab(answers.NameWorker)))
-		if err != nil {
+	workerTemplate := template.Must(template.New("worker").Parse(tlp.Worker))
+	if err := workerTemplate.Execute(workerFile, struct {
+		WorkerName string
+	}{workerName}); err != nil {
+		return err
+	}
+
+	if _, err = os.Stat(fmt.Sprintf("%s/internal/%s", absolutePath, workerName)); os.IsNotExist(err) {
+		if err := os.MkdirAll(fmt.Sprintf("%s/internal/%s", absolutePath, workerName), 0751); err != nil {
 			return err
 		}
+	}
+	workerHandlerFile, err := os.Create(fmt.Sprintf("%s/internal/%s/%s.handler.go", absolutePath, workerName, strcase.ToKebab(workerName)))
+	if err != nil {
+		return err
+	}
 
-		defer workerHandlerFile.Close()
+	defer workerHandlerFile.Close()
 
-		workerHandlerTemplate := template.Must(template.New("workerHandler").Funcs(funcMap).Parse(tlp.WorkerHandler))
-		if err := workerHandlerTemplate.Execute(workerHandlerFile, struct {
-			Kafka      bool
-			Module     string
-			NameWorker string
-		}{answers.Mq == "Kafka", answers.Module, answers.NameWorker}); err != nil {
+	workerHandlerTemplate := template.Must(template.New("workerHandler").Funcs(funcMap).Parse(tlp.WorkerHandler))
+	if err := workerHandlerTemplate.Execute(workerHandlerFile, struct {
+		Module     string
+		WorkerName string
+	}{absolutePath, workerName}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func startSurveyController(answers *ControllerAnswer) error {
+	if err := survey.Ask([]*survey.Question{ControllerName}, answers); err != nil {
+		return err
+	}
+	return nil
+}
+
+func createController(controllerName string) error {
+	absolutePath, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	funcMap := template.FuncMap{
+		"ToCamel":      strcase.ToCamel,
+		"ToLowerCamel": strcase.ToLowerCamel,
+	}
+
+	if _, err = os.Stat(fmt.Sprintf("%s/internal/%s", absolutePath, controllerName)); os.IsNotExist(err) {
+		if err := os.MkdirAll(fmt.Sprintf("%s/internal/%s", absolutePath, controllerName), 0751); err != nil {
 			return err
 		}
+	}
+	controllerFile, err := os.Create(fmt.Sprintf("%s/internal/%s/%s.controller.go", absolutePath, controllerName, strcase.ToKebab(controllerName)))
+	if err != nil {
+		return err
+	}
+	defer controllerFile.Close()
+
+	controllerTemplate := template.Must(template.New("controller").Funcs(funcMap).Parse(tlp.Controller))
+	if err := controllerTemplate.Execute(controllerFile, struct {
+		Name string
+	}{controllerName}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func startSurveyService(answers *ServiceAnswer) error {
+	if err := survey.Ask([]*survey.Question{ServiceName}, answers); err != nil {
+		return err
+	}
+	return nil
+}
+
+func createService(serviceName string) error {
+	absolutePath, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	funcMap := template.FuncMap{
+		"ToCamel":      strcase.ToCamel,
+		"ToLowerCamel": strcase.ToLowerCamel,
+	}
+
+	if _, err = os.Stat(fmt.Sprintf("%s/internal/%s", absolutePath, serviceName)); os.IsNotExist(err) {
+		if err := os.MkdirAll(fmt.Sprintf("%s/internal/%s", absolutePath, serviceName), 0751); err != nil {
+			return err
+		}
+	}
+
+	serviceFile, err := os.Create(fmt.Sprintf("%s/internal/%s/%s.service.go", absolutePath, serviceName, strcase.ToKebab(serviceName)))
+	if err != nil {
+		return err
+	}
+
+	defer serviceFile.Close()
+
+	serviceTemplate := template.Must(template.New("service").Funcs(funcMap).Parse(tlp.Service))
+
+	if err := serviceTemplate.Execute(serviceFile, struct {
+		Name string
+	}{serviceName}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func startSurveyRepo(answers *RepositoryAnswer) error {
+	if err := survey.Ask([]*survey.Question{DatabaseQuestion, RepoName}, answers); err != nil {
+		return err
+	}
+	return nil
+}
+
+func createRepo(answers RepositoryAnswer) error {
+	absolutePath, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	funcMap := template.FuncMap{
+		"ToCamel":      strcase.ToCamel,
+		"ToLowerCamel": strcase.ToLowerCamel,
+		"ToKebab":      strcase.ToKebab,
+	}
+
+	if _, err = os.Stat(fmt.Sprintf("%s/internal/%s", absolutePath, answers.RepositoryName)); os.IsNotExist(err) {
+		if err := os.MkdirAll(fmt.Sprintf("%s/internal/%s", absolutePath, answers.RepositoryName), 0751); err != nil {
+			return err
+		}
+	}
+
+	repoFile, err := os.Create(fmt.Sprintf("%s/internal/%s/%s.repo.go", absolutePath, answers.RepositoryName, strcase.ToKebab(answers.RepositoryName)))
+	if err != nil {
+		return err
+	}
+
+	defer repoFile.Close()
+
+	repoTemplate := template.Must(template.New("repo").Funcs(funcMap).Parse(tlp.Repository))
+
+	if err := repoTemplate.Execute(repoFile, struct {
+		MongoDB bool
+		Name    string
+	}{answers.Database == "MongoDB", answers.RepositoryName}); err != nil {
+		return err
+	}
+
+	entityFile, err := os.Create(fmt.Sprintf("%s/internal/%s/%s.entity.go", absolutePath, answers.RepositoryName, strcase.ToKebab(answers.RepositoryName)))
+	if err != nil {
+		return err
+	}
+
+	defer entityFile.Close()
+
+	entityTemplate := template.Must(template.New("entity").Funcs(funcMap).Parse(tlp.Entity))
+
+	if err := entityTemplate.Execute(entityFile, struct {
+		MongoDB bool
+		Name    string
+	}{answers.Database == "MongoDB", answers.RepositoryName}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func startSurveyDI(answers *DIAnswer) error {
+	if err := survey.Ask([]*survey.Question{TypeQuestion, DINameQuestion, DatabaseQuestion}, answers); err != nil {
+		return err
+	}
+	return nil
+}
+
+func createDI(answers DIAnswer) error {
+	if answers.Type == "API" {
+		if err := createController(answers.DIName); err != nil {
+			return err
+		}
+	}
+
+	if err := createService(answers.DIName); err != nil {
+		return err
+	}
+
+	if err := createRepo(RepositoryAnswer{answers.DIName, answers.Database}); err != nil {
+		return err
 	}
 
 	return nil

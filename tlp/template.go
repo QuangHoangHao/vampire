@@ -27,7 +27,7 @@ WORKDIR /app
 
 COPY --from=builder /app/bin /app/bin
 COPY --from=builder /app/*.env /app`
-	MainAPI string = `package main
+	API string = `package main
 
 import (
 	"net/http"
@@ -35,12 +35,6 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-	{{ if .MongoDB}} 
-	"context"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/mongo/readpref"
-	{{end}}
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
@@ -57,61 +51,32 @@ func main() {
 	if err := godotenv.Load(fileEnv); err != nil {
 		log.Error().Err(err).Msg("parse env failed")
 	}
-	{{ if .MongoDB}} 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(os.Getenv("MONGO_URL")))
-	if err != nil {
-		panic(err)
-	}
-	defer func() {
-		if err := client.Disconnect(context.TODO()); err != nil {
-			panic(err)
-		}
-	}()
-	
-	if err := client.Ping(context.TODO(), readpref.Primary()); err != nil {
-		log.Error().Err(err).Msg("")
-	}
-	log.Info().Msg("Connected to MongoDB")
-	
-	client.Database(os.Getenv("MONGO_DB_NAME"))
-	{{end}}
 
-	{{if .Gin}}
 	router := gin.Default()
+
 	router.GET("/health", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
+
 	router.Run(":3000")
 	log.Info().Msg("server is running at : 3000")
-	{{end}}
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	log.Info().Msg("Shutting down server...")
 }`
-	MainWorker string = `package main
+	Worker string = `package main
 
 import (
-	"context"
 	"os"
 	"os/signal"
-	{{if .Kafka}} 
-	"{{ .Module }}/pkg/kafka_sesu"
-	{{end}}
 	"syscall"
 	"time"
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	{{if .MongoDB}} 
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/mongo/readpref"
-	{{end}}
 )
 	
 func main() {
@@ -127,151 +92,118 @@ func main() {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	{{if .MongoDB}} 
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(os.Getenv("{{ .DBUrl }}")))
-	defer func() {
-		if err = client.Disconnect(ctx); err != nil {
-			panic(err)
-		}
-	}()
-	if err := client.Ping(context.TODO(), readpref.Primary()); err != nil {
-		log.Error().Err(err).Msg("")
-	}
-	log.Info().Msg("Connected to MongoDB")
-	{{end}}
-
-	// database := client.Database(os.Getenv("{{ .DBName }}"))
-
-	// {{ .NameWorker | ToLowerCamel }}Repo := {{ .NameWorker }}.New{{ .NameWorker | ToCamel }}Repository(database)
-	// {{ .NameWorker | ToLowerCamel }}Service := {{ .NameWorker }}.New{{ .NameWorker | ToCamel }}Service({{ .NameWorker | ToLowerCamel }}Repo)
-	// {{ .NameWorker | ToLowerCamel }}Handler := {{ .NameWorker }}.New{{ .NameWorker | ToCamel }}Handler({{ .NameWorker | ToLowerCamel }}Service)
-
-	{{ .NameWorker | ToLowerCamel }}KafkaHandler := make(map[string]kafka_sesu.CallHandler)
-	// {{ .NameWorker | ToLowerCamel }}KafkaHandler[os.Getenv("{{ .TopicNameWorker }}")] = {{ .NameWorker | ToLowerCamel }}Handler.
-
-	{{ .NameWorker | ToLowerCamel }}Consumer := kafka_sesu.NewConsumerKafka(kafka_sesu.ConsumerConfig{
-		Brokers:           []string{os.Getenv("{{ .KafkaURL }}")},
-		GroupID:           "{{ .GroupID }}",
-		MinBytes:          10e2,
-		MaxBytes:          10e3,
-		HeartbeatInterval: time.Second * 20,
-		SessionTimeout:    time.Second * 60,
-		MaxWait:           time.Second * 1,
-		Handler:           {{ .NameWorker | ToLowerCamel }}KafkaHandler,
-	})
-	go {{ .NameWorker | ToLowerCamel }}Consumer.Consume()
-
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 
 	select {
 	case s := <-interrupt:
 		log.Info().Msg("app - Run - signal: " + s.String())
-	case <-{{ .NameWorker | ToLowerCamel }}Consumer.Notify():
-		log.Info().Msg("{{ .NameWorker | ToLowerCamel }}Consumer crash!")
 	}
-	defer {{ .NameWorker | ToLowerCamel }}Consumer.Shutdown()
 }`
 
-	WorkerHandler string = `package {{ .NameWorker }}
+	WorkerHandler string = `package {{ .WorkerName }}
 
 import (
 	// "encoding/json"
-	{{if .Kafka}} 
-	// "{{ .Module }}/pkg/kafka_sesu"
-	{{end}}
-	// "{{ .Module }}/internal/common"
 	// "github.com/rs/zerolog/log"
 )
 
-type {{ .NameWorker | ToCamel }}Hander interface {
-
+type {{ .WorkerName | ToCamel }}Hander interface {
 }
 
-type {{ .NameWorker | ToLowerCamel }}Handler struct {
-	{{ .NameWorker | ToLowerCamel }}Service {{ .NameWorker | ToCamel }}Service
+type {{ .WorkerName | ToLowerCamel }}Handler struct {
 }
 
-func New{{ .NameWorker | ToCamel }}Handler({{ .NameWorker | ToLowerCamel }}Service {{ .NameWorker | ToCamel }}Service) {{ .NameWorker | ToCamel }}Hander {
-	return &{{ .NameWorker | ToLowerCamel }}Handler{ {{ .NameWorker | ToLowerCamel }}Service: {{ .NameWorker | ToLowerCamel }}Service}
+func New{{ .WorkerName | ToCamel }}Handler() {{ .WorkerName | ToCamel }}Hander {
+	return &{{ .WorkerName | ToLowerCamel }}Handler{}
 }
 `
 
-	WorkerService string = `package {{ .NameWorker }}
+	Controller string = `package {{ .Name }}
+
+import (
+	// "encoding/json"
+	// "net/http"
+	// "strconv"
+	// "time"
+
+	// "github.com/gin-gonic/gin"
+	// "github.com/rs/zerolog/log"
+)
+
+type {{ .Name | ToCamel }}Controller interface {
+}
+
+type {{ .Name | ToLowerCamel }}Controller struct {
+	{{ .Name | ToLowerCamel }}Service {{ .Name | ToCamel }}Service
+}
+
+func New{{ .Name | ToCamel }}Controller({{ .Name | ToLowerCamel }}Service {{ .Name | ToCamel }}Service) {{ .Name | ToCamel }}Controller {
+	return &{{ .Name | ToLowerCamel }}Controller{ {{ .Name | ToLowerCamel }}Service: {{ .Name | ToLowerCamel }}Service }
+}
+`
+
+	Service string = `package {{ .Name }}
 
 import (
 	// "encoding/json"
 	// "errors"
-	// "{{ .Module }}/internal/common"
 	// "strconv"
 	// "time"
 	// "github.com/rs/zerolog/log"
-	{{if .MongoDB}} 
-	// "context"
-	// "go.mongodb.org/mongo-driver/mongo"
-	{{end}}
 )
 
-type {{ .NameWorker | ToCamel }}Service interface {
-
+type {{ .Name | ToCamel }}Service interface {
 }
 
-type {{ .NameWorker | ToLowerCamel }}Service struct {
-	repository {{ .NameWorker | ToCamel }}Repository
+type {{ .Name | ToLowerCamel }}Service struct {
+	{{ .Name | ToLowerCamel }}Repository {{ .Name | ToCamel }}Repository
 }
 
-func New{{ .NameWorker | ToCamel }}Service(repository {{ .NameWorker | ToCamel }}Repository) {{ .NameWorker | ToCamel }}Service {
-	return &{{ .NameWorker | ToLowerCamel }}Service{repository: repository}
+func New{{ .Name | ToCamel }}Service({{ .Name | ToLowerCamel }}Repository {{ .Name | ToCamel }}Repository) {{ .Name | ToCamel }}Service {
+	return &{{ .Name | ToLowerCamel }}Service{ {{ .Name | ToLowerCamel }}Repository: {{ .Name | ToLowerCamel }}Repository }
 }
 `
 
-	WorkerRepo string = `package {{ .NameWorker }}
+	Repository string = `package {{ .Name }}
+
 import (
-	// "{{ .Module }}/internal/common"
 	// "time"
 	// "github.com/rs/zerolog/log"
 	{{if .MongoDB}} 
 	// "context"
 	// "go.mongodb.org/mongo-driver/bson"
 	// "go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
 	// "go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo"
 	{{end}}
 )
 
-type {{ .NameWorker | ToCamel }}Repository interface {
-
+type {{ .Name | ToCamel }}Repository interface {
 }
 
-type {{ .NameWorker | ToLowerCamel }}Repository struct {
-	{{if .MongoDB}} 
-	database      *mongo.Database
-	collection    *mongo.Collection
-	{{end}}
+type {{ .Name | ToLowerCamel }}Repository struct {
+	{{if .MongoDB}}database      *mongo.Database
+	collection    *mongo.Collection{{end}}
 }
 
-func New{{ .NameWorker | ToCamel }}Repository({{if .MongoDB}}database *mongo.Database{{end}}) {{ .NameWorker | ToCamel }}Repository {
-	return &{{ .NameWorker | ToLowerCamel }}Repository{
-		{{if .MongoDB}}
-		database:      database,
-		collection:    database.Collection("{{ .NameWorker | ToKebab }}"),
-		{{end}}
+func New{{ .Name | ToCamel }}Repository({{if .MongoDB}}database *mongo.Database{{end}}) {{ .Name | ToCamel }}Repository {
+	return &{{ .Name | ToLowerCamel }}Repository{
+		{{if .MongoDB}}database:      database,
+		collection:    database.Collection("{{ .Name | ToKebab }}"),{{end}}
 	}
+}
+`
+	Entity string = `package {{ .Name }}
+{{if .MongoDB}}
+import "go.mongodb.org/mongo-driver/bson/primitive"
+{{end}}
+type {{ .Name | ToCamel }} struct {
+	{{if .MongoDB}}ID primitive.ObjectID ` + "`" + `json:"id" bson:"_id"` + "`" + `{{end}}
 }
 `
 
 	Env string = `APP_ENV=development
 port=3000
-{{if .MongoDB}}
-{{ .DBUrl }}=
-{{ .DBName }}=
-{{end}}
-{{ if .Kafka -}}
-{{ .KafkaURL }}=
-{{ .TopicNameWorker }}=
-{{- end }}
 `
 )
