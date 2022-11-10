@@ -8,8 +8,8 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "vampire",
-	Short: `Initialize a Golang Web Application`,
-	Long:  `Initialize a Golang Web Application with gin framework`,
+	Short: `Initialize a Golang Project`,
+	Long:  `Initialize a Golang Web Application`,
 }
 
 func Execute() {

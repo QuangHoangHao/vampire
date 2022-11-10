@@ -1,6 +1,6 @@
 package main
 
-import "github.com/tikivn/vampire/cmd"
+import "github.com/QuangHoangHao/vampire/cmd"
 
 func main() {
 	cmd.Execute()
